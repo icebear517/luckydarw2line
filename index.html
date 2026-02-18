@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>卡里善之樹｜幸運抽獎轉盤</title>
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, 'LiHei Pro', sans-serif;
+            background-color: #f4f4f9;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; margin: 0; color: #333; overflow: hidden; touch-action: manipulation;
+        }
+        h1 { color: #d12e5c; margin: 0 0 5px 0; font-size: 5vmin; }
+        p.subtitle { margin: 0 0 20px 0; color: #666; font-size: 2.5vmin; }
+        
+        .container { position: relative; width: 75vmin; height: 75vmin; max-width: 600px; max-height: 600px; margin-bottom: 30px; }
+        canvas#wheel { width: 100%; height: 100%; border-radius: 50%; box-shadow: 0 10px 20px rgba(0,0,0,0.2); transition: transform 4s cubic-bezier(0.1, 0.7, 0.1, 1); }
+        
+        .pointer {
+            position: absolute; top: -25px; left: 50%; transform: translateX(-50%);
+            width: 0; height: 0; border-left: 25px solid transparent; border-right: 25px solid transparent; border-top: 55px solid #333; z-index: 10;
+        }
+        .pointer::after {
+            content: ''; position: absolute; top: -55px; left: -18px;
+            border-left: 18px solid transparent; border-right: 18px solid transparent; border-top: 45px solid #ff3b30;
+        }
+        
+        button#spinBtn {
+            background-color: #d12e5c; color: white; border: none; padding: 3vmin 10vmin;
+            font-size: 4vmin; font-weight: bold; border-radius: 50px; cursor: pointer;
+            box-shadow: 0 6px 15px rgba(209,46,92,0.3); transition: transform 0.1s, background-color 0.3s;
+        }
+        button#spinBtn:active { transform: scale(0.95); }
+        button#spinBtn:disabled { background-color: #ccc; box-shadow: none; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <h1>卡里善之樹｜幸運轉盤</h1>
+    <p class="subtitle" id="user-greeting">正在連線至系統...</p>
+
+    <div class="container">
+        <div class="pointer"></div>
+        <canvas id="wheel" width="800" height="800"></canvas>
+    </div>
+
+    <button id="spinBtn" onclick="spin()" disabled>載入中...</button>
+
+    <script>
+        // ==========================================
+        // 1. 請在這裡填入你的設定值
+        // ==========================================
+        const LIFF_ID = "你的_LIFF_ID"; 
+        const GAS_URL = "你的_GAS_URL"; 
+        
+        // 轉盤預設配色 (會自動循環套用)
+        const wheelColors = ["#FF3B30", "#FF9500", "#FFCC00", "#4CD964", "#5AC8FA", "#007AFF", "#5856D6", "#d12e5c"];
+
+        let prizes = [];
+        let userProfile = null;
+        let currentRotation = 0;
+        let isSpinning = false;
+        let audioCtx;
+
+        // ==========================================
+        // 2. 系統初始化與讀取資料
+        // ==========================================
+        async function initializeApp() {
+            try {
+                await liff.init({ liffId: LIFF_ID });
+                
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                    return;
+                }
+
+                const friendStatus = await liff.getFriendship();
+                if (!friendStatus.friendFlag) {
+                    alert("請先將我們加入好友才能參加抽獎喔！");
+                    window.location.href = "https://line.me/R/ti/p/@你的官方帳號ID"; // 替換為你的加好友連結
+                    return;
+                }
+
+                userProfile = await liff.getProfile();
+                document.getElementById('user-greeting').innerText = `哈囉 ${userProfile.displayName}，試試您的好手氣！`;
+
+                await fetchPrizes();
+
+            } catch (err) {
+                console.error("初始化失敗:", err);
+                alert("系統初始化失敗，請稍後再試。");
+            }
+        }
+
+        async function fetchPrizes() {
+            try {
+                const response = await fetch(GAS_URL);
+                prizes = await response.json();
+                drawWheel();
+            } catch (error) {
+                console.error("讀取獎項失敗:", error);
+                document.getElementById('spinBtn').innerText = '連線失敗';
+            }
+        }
+
+        // ==========================================
+        // 3. 畫轉盤與音效
+        // ==========================================
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playTick() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode); gainNode.connect(audioCtx.destination);
+            osc.frequency.value = 800; osc.type = "sine";
+            gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        function playWinSound() {
+            if (!audioCtx) return;
+            const melody = [
+                { note: 523.25, time: 0, duration: 0.1 }, { note: 659.25, time: 0.1, duration: 0.1 },
+                { note: 783.99, time: 0.2, duration: 0.1 }, { note: 1046.50, time: 0.3, duration: 0.3 },
+                { note: 783.99, time: 0.65, duration: 0.12 }, { note: 1046.50, time: 0.8, duration: 0.8 }
+            ];
+            melody.forEach(m => {
+                const osc = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
+                osc.connect(gainNode); gainNode.connect(audioCtx.destination);
+                osc.type = "square"; osc.frequency.value = m.note;
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime + m.time);
+                gainNode.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + m.time + 0.02);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + m.time + m.duration);
+                osc.start(audioCtx.currentTime + m.time); osc.stop(audioCtx.currentTime + m.time + m.duration);
+            });
+        }
+        
+        function drawWheel() {
+            const canvas = document.getElementById('wheel');
+            const ctx = canvas.getContext('2d');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = canvas.width / 2;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const sliceAngle = (2 * Math.PI) / prizes.length;
+
+            for (let i = 0; i < prizes.length; i++) {
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, i * sliceAngle, (i + 1) * sliceAngle);
+                
+                // 自動帶入設定好的顏色
+                ctx.fillStyle = wheelColors[i % wheelColors.length];
+                
+                ctx.fill();
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = "#fff";
+                ctx.stroke();
+
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(i * sliceAngle + sliceAngle / 2);
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#fff";
+                ctx.font = "bold 44px 'Helvetica Neue', sans-serif";
+                
+                if(prizes[i].count <= 0) ctx.fillStyle = "rgba(255,255,255,0.4)"; 
+                ctx.fillText(prizes[i].name, radius - 40, 15);
+                ctx.restore();
+            }
+            checkButtonStatus();
+        }
+
+        function checkButtonStatus() {
+            const totalWeight = prizes.reduce((sum, prize) => sum + parseInt(prize.count), 0);
+            const btn = document.getElementById('spinBtn');
+            if (totalWeight === 0) {
+                btn.disabled = true; btn.innerText = '獎項已全數抽完';
+            } else {
+                btn.disabled = false; btn.innerText = '開始抽獎';
+            }
+        }
+
+        // ==========================================
+        // 4. 抽獎邏輯與送出資料
+        // ==========================================
+        function spin() {
+            if (isSpinning) return;
+            initAudio();
+
+            let totalWeight = prizes.reduce((sum, prize) => sum + parseInt(prize.count), 0);
+            if (totalWeight === 0) return;
+
+            isSpinning = true;
+            document.getElementById('spinBtn').disabled = true;
+
+            let randomNum = Math.floor(Math.random() * totalWeight);
+            let cumulativeWeight = 0;
+            let winningIndex = 0;
+
+            for (let i = 0; i < prizes.length; i++) {
+                cumulativeWeight += parseInt(prizes[i].count);
+                if (randomNum < cumulativeWeight) {
+                    winningIndex = i; break;
+                }
+            }
+
+            const sliceAngle = 360 / prizes.length;
+            const targetAngle = 270 - (winningIndex * sliceAngle + sliceAngle / 2);
+            const spinDegrees = 2160 + targetAngle - (currentRotation % 360);
+            currentRotation += spinDegrees;
+
+            const canvas = document.getElementById('wheel');
+            canvas.style.transform = `rotate(${currentRotation}deg)`;
+
+            let ticks = 0;
+            let tickInterval = setInterval(() => {
+                playTick();
+                ticks++;
+                if (ticks > 15) clearInterval(tickInterval);
+            }, 200);
+
+            setTimeout(() => {
+                const prizeName = prizes[winningIndex].name;
+                
+                playWinSound();
+                confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#FF3B30', '#FFCC00', '#4CD964', '#007AFF'] });
+
+                processWinningResult(prizeName);
+            }, 4000);
+        }
+
+        async function processWinningResult(prizeName) {
+            try {
+                // 寫入 Google 試算表
+                await fetch(GAS_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        userId: userProfile.userId,
+                        userName: userProfile.displayName,
+                        prizeName: prizeName
+                    })
+                });
+
+                alert(`🎉 恭喜您抽中：\n\n【 ${prizeName} 】\n\n系統即將發送兌換訊息至 LINE 聊天室。`);
+
+                // 透過 LIFF 回傳對應訊息至 LINE 對話框
+                if (liff.isInClient()) {
+                    await liff.sendMessages([
+                        {
+                            type: 'text',
+                            text: `我要兌換轉盤獎項：${prizeName}`
+                        }
+                    ]);
+                    liff.closeWindow(); 
+                } else {
+                    isSpinning = false;
+                    fetchPrizes(); 
+                }
+
+            } catch (error) {
+                console.error("結果處理失敗:", error);
+                alert("伺服器連線異常，請截圖此畫面：抽中 " + prizeName);
+            }
+        }
+
+        // 啟動程式
+        initializeApp();
+
+    </script>
+</body>
+</html>
