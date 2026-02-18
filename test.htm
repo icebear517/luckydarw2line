@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIFF 串接測試</title>
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        .box { border: 1px solid #ccc; padding: 15px; border-radius: 8px; background: #f9f9f9; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>LINE LIFF 基礎串接測試</h2>
+    
+    <div class="box">
+        <p><strong>系統狀態：</strong> <span id="status">準備載入中...</span></p>
+        <hr>
+        <p id="profile-info">等待取得資料...</p>
+    </div>
+
+    <script>
+        // 你的 LIFF ID
+        const LIFF_ID = "2009158441-00JwsNW0"; 
+
+        async function testLiff() {
+            try {
+                document.getElementById('status').innerText = "開始執行 liff.init()...";
+                
+                // 1. 初始化 LIFF
+                await liff.init({ liffId: LIFF_ID });
+                document.getElementById('status').innerText = "初始化成功！檢查登入狀態...";
+
+                // 2. 檢查是否登入
+                if (!liff.isLoggedIn()) {
+                    document.getElementById('status').innerText = "尚未登入，系統將自動跳轉...";
+                    liff.login();
+                    return;
+                }
+
+                // 3. 取得使用者資料
+                document.getElementById('status').innerText = "已登入！正在取得個人授權資料...";
+                const profile = await liff.getProfile();
+
+                // 4. 成功印出資料
+                document.getElementById('status').innerHTML = '<span class="success">串接大成功 🎉</span>';
+                document.getElementById('profile-info').innerHTML = `
+                    <b>你的 LINE 暱稱：</b> ${profile.displayName} <br>
+                    <b>你的 User ID：</b> ${profile.userId}
+                `;
+
+            } catch (error) {
+                // 如果失敗，把真實的錯誤訊息印在畫面上
+                document.getElementById('status').innerHTML = `<span class="error">連線失敗 ❌</span>`;
+                document.getElementById('profile-info').innerHTML = `
+                    <span style="color:red;"><b>錯誤原因：</b> ${error.message}</span><br><br>
+                    <small>請確認：<br>1. 網址是否為 https 開頭<br>2. 此網址是否已填入 LINE 後台的 Endpoint URL</small>
+                `;
+                console.error("LIFF Error:", error);
+            }
+        }
+
+        // 執行測試
+        testLiff();
+    </script>
+
+</body>
+</html>
