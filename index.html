@@ -53,7 +53,7 @@
         // ==========================================
         // 1. 設定區：LIFF ID 與 GAS URL
         // ==========================================
-        const LIFF_ID = "2009158441-00JwsNW0"; 
+        const LIFF_ID = "1656214361-bdUiA45A"; // 已更新為正式區 ID
         const GAS_URL = "https://script.google.com/macros/s/AKfycbypyDO3DrC06al7gp_HSC119sNYyXAa4CfC2UkRvcxDOMAdwZjh-woo9DBOcfF2hN1UkQ/exec"; 
         
         // 自動循環套用的轉盤配色
@@ -92,7 +92,6 @@
 
                 userProfile = await liff.getProfile();
                 
-                // 更新為最新的打招呼用語
                 document.getElementById('user-greeting').innerHTML = `${userProfile.displayName} 你好<br>祝你中大獎！`;
 
                 await fetchPrizes();
@@ -180,7 +179,7 @@
                 ctx.fillStyle = "#fff";
                 ctx.font = "bold 44px 'Helvetica Neue', sans-serif";
                 
-                if(prizes[i].count <= 0) ctx.fillStyle = "rgba(255,255,255,0.4)"; 
+                // 拿掉反灰邏輯，讓所有獎項文字都保持白色不變暗
                 ctx.fillText(prizes[i].name, radius - 40, 15);
                 ctx.restore();
             }
@@ -191,6 +190,7 @@
             const totalWeight = prizes.reduce((sum, prize) => sum + parseInt(prize.count), 0);
             const btn = document.getElementById('spinBtn');
             if (totalWeight === 0) {
+                // 當「所有」獎項都歸零時，按鈕才會鎖住
                 btn.disabled = true; btn.innerText = '今日獎品已抽完';
             } else {
                 btn.disabled = false; btn.innerText = '開始抽獎';
