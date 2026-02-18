@@ -14,7 +14,7 @@
             min-height: 100vh; margin: 0; color: #333; overflow: hidden; touch-action: manipulation;
         }
         h1 { color: #d12e5c; margin: 0 0 5px 0; font-size: 5vmin; }
-        p.subtitle { margin: 0 0 20px 0; color: #666; font-size: 2.5vmin; }
+        p.subtitle { margin: 0 0 20px 0; color: #666; font-size: 2.5vmin; text-align: center; line-height: 1.4; }
         
         .container { position: relative; width: 75vmin; height: 75vmin; max-width: 600px; max-height: 600px; margin-bottom: 30px; }
         canvas#wheel { width: 100%; height: 100%; border-radius: 50%; box-shadow: 0 10px 20px rgba(0,0,0,0.2); transition: transform 4s cubic-bezier(0.1, 0.7, 0.1, 1); }
@@ -51,12 +51,12 @@
 
     <script>
         // ==========================================
-        // 1. 請在這裡填入你的設定值
+        // 1. 設定區：LIFF ID 與 GAS URL
         // ==========================================
         const LIFF_ID = "2009158441-00JwsNW0"; 
         const GAS_URL = "https://script.google.com/macros/s/AKfycbypyDO3DrC06al7gp_HSC119sNYyXAa4CfC2UkRvcxDOMAdwZjh-woo9DBOcfF2hN1UkQ/exec"; 
         
-        // 轉盤預設配色 (會自動循環套用)
+        // 自動循環套用的轉盤配色
         const wheelColors = ["#FF3B30", "#FF9500", "#FFCC00", "#4CD964", "#5AC8FA", "#007AFF", "#5856D6", "#d12e5c"];
 
         let prizes = [];
@@ -77,15 +77,23 @@
                     return;
                 }
 
-                const friendStatus = await liff.getFriendship();
-                if (!friendStatus.friendFlag) {
-                    alert("請先將我們加入好友才能參加抽獎喔！");
-                    window.location.href = "https://line.me/R/ti/p/@你的官方帳號ID"; // 替換為你的加好友連結
-                    return;
+                // 檢查是否加好友 (需在 LINE 後台開啟 Bot link feature)
+                try {
+                    const friendStatus = await liff.getFriendship();
+                    if (!friendStatus.friendFlag) {
+                        alert("請先將我們加入好友才能參加抽獎喔！");
+                        // 引導至卡里善之樹專屬 LINE 官方帳號
+                        window.location.href = "https://line.me/R/ti/p/@tlf0508f"; 
+                        return;
+                    }
+                } catch (friendErr) {
+                    console.log("好友狀態檢查略過，可能未開啟 Bot link feature", friendErr);
                 }
 
                 userProfile = await liff.getProfile();
-                document.getElementById('user-greeting').innerText = `哈囉 ${userProfile.displayName}，試試您的好手氣！`;
+                
+                // 更新為最新的打招呼用語
+                document.getElementById('user-greeting').innerHTML = `${userProfile.displayName} 你好<br>祝你中大獎！`;
 
                 await fetchPrizes();
 
@@ -158,7 +166,6 @@
                 ctx.moveTo(centerX, centerY);
                 ctx.arc(centerX, centerY, radius, i * sliceAngle, (i + 1) * sliceAngle);
                 
-                // 自動帶入設定好的顏色
                 ctx.fillStyle = wheelColors[i % wheelColors.length];
                 
                 ctx.fill();
@@ -184,14 +191,14 @@
             const totalWeight = prizes.reduce((sum, prize) => sum + parseInt(prize.count), 0);
             const btn = document.getElementById('spinBtn');
             if (totalWeight === 0) {
-                btn.disabled = true; btn.innerText = '獎項已全數抽完';
+                btn.disabled = true; btn.innerText = '今日獎品已抽完';
             } else {
                 btn.disabled = false; btn.innerText = '開始抽獎';
             }
         }
 
         // ==========================================
-        // 4. 抽獎邏輯與送出資料
+        // 4. 抽獎邏輯與寫入資料庫
         // ==========================================
         function spin() {
             if (isSpinning) return;
@@ -241,9 +248,13 @@
 
         async function processWinningResult(prizeName) {
             try {
-                // 寫入 Google 試算表
+                // 將結果寫入 Google 試算表，加入防 CORS 阻擋設定
                 await fetch(GAS_URL, {
                     method: 'POST',
+                    redirect: 'follow', 
+                    headers: {
+                        "Content-Type": "text/plain;charset=utf-8" 
+                    },
                     body: JSON.stringify({
                         userId: userProfile.userId,
                         userName: userProfile.displayName,
@@ -253,7 +264,7 @@
 
                 alert(`🎉 恭喜您抽中：\n\n【 ${prizeName} 】\n\n系統即將發送兌換訊息至 LINE 聊天室。`);
 
-                // 透過 LIFF 回傳對應訊息至 LINE 對話框
+                // 透過 LIFF 回傳訊息給官方帳號
                 if (liff.isInClient()) {
                     await liff.sendMessages([
                         {
